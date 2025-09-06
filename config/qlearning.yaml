@@ -1,0 +1,9 @@
+total_episodes: 2000
+learning_rate: 0.8
+gamma: 0.95
+epsilon: 0.1
+seed: 123
+n_runs: 5
+map_size: null
+action_size: null
+state_size: null
