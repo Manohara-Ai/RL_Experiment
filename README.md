@@ -104,10 +104,21 @@ Training outputs are automatically saved in the `results/` directory:
 * **Logs (CSV)** → `results/csv/`
 * **Checkpoints** → `results/checkpoints/`
 
-Example:
+---
 
-* `results/plots/DQN.png` → DQN learning curve
-* `results/csv/Q_Learning.csv` → Q-Learning training log
+### Q-Learning Performance
+
+The Q-Learning agent's performance appears to be stagnant. The average reward fluctuates around a negative value and does not show a clear upward trend. This suggests that the agent is struggling to find a consistent optimal policy. This behavior is expected for tabular Q-learning in an environment with a large state space, as it may not be able to explore all possible states effectively. The agent seems to get stuck in local optima, receiving a consistent negative reward, likely from bumping into walls or obstacles without reaching the goal.
+
+[![Q-Learning Plot](results/plots/Q_Learning.png)](results/plots/Q_Learning.png)
+
+---
+
+### DQN Performance
+
+In contrast, the DQN agent demonstrates significant learning progress. The average reward steadily increases over the 2000 episodes, starting from a negative value and climbing to a positive one. This indicates that the deep neural network is successfully generalizing from the agent's experiences to learn a better policy. The smoother curve and consistent upward trend show that DQN is more effective at handling the complexity of the BoxEnv and navigating to the goal, unlike the tabular Q-Learning approach. The final positive reward shows that the agent has learned a policy to solve the environment.
+
+[![DQN Plot](results/plots/DQN.png)](results/plots/DQN.png)
 
 ---
 
