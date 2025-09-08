@@ -131,10 +131,7 @@ In summary, the line plot and statistics together confirm that **DQN+MCTS outper
 
 ## Future Work
 
-* Improve reward shaping to mitigate the sparse reward problem.
-* Extend planning-enhanced methods (TreeQN, MCTS-guided PPO).
-* Experiment with curriculum learning to help PPO adapt.
-* Benchmark against additional algorithms (A3C, SAC).
+* Extend planning-enhanced methods (TreeQN).
 
 ---
 
