@@ -4,6 +4,6 @@ gamma: 0.95
 epsilon: 0.1
 seed: 123
 n_runs: 5
-map_size: null
-action_size: null
-state_size: null
+map_size: 8
+action_size: 4
+state_size: 64

@@ -68,10 +68,6 @@ if __name__ == '__main__':
 
     env = BoxEnv(render_mode=None)
 
-    params['action_size'] = env.action_space.n
-    params['state_size'] = env.size * env.size
-    params['map_size'] = env.size
-
     env.action_space.seed(params['seed'])
 
     print("\n" + "="*50)

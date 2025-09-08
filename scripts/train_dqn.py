@@ -28,7 +28,7 @@ def run_env(env, params):
             device=device
         )
         for episode in tqdm(range(params['total_episodes']), desc=f"Run {run+1}"):
-            state, _ = env.reset(seed=params['seed'])
+            state, _ = env.reset(seed=params['seed'] + run)
             done = False
             total_rewards = 0
             step = 0
@@ -54,10 +54,6 @@ if __name__ == '__main__':
     st_all = pd.DataFrame()
 
     env = BoxEnv(render_mode=None)
-
-    params['map_size'] = env.size
-    params['action_size'] = env.action_space.n
-    params['state_size'] = env.observation_space.shape
 
     env.action_space.seed(params['seed'])
 
