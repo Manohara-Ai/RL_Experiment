@@ -94,13 +94,6 @@ The **Q-Learning agent** shows limited learning capability. Its average reward f
 
 The **DQN agent** demonstrates clearer learning progress. Starting from negative rewards, its performance steadily improves as training progresses. By leveraging a deep neural network with experience replay, DQN successfully generalizes across unseen states and avoids the pitfalls of tabular Q-learning. The reward curve becomes smoother and trends upward, though evaluation results reveal that it still struggles to consistently solve the environment.
 
-**Evaluation Statistics (50 games):**
-
-* Average Reward: **-2.062**
-* Average Inference Time: **0.0002 seconds**
-
-The negative evaluation reward indicates that while DQN improves during training, it is not reliably successful at test time.
-
 ### **PPO**
 
 ![PPO Plot](results/plots/PPO.png)
@@ -111,22 +104,28 @@ The **PPO agent** performs poorly in this environment. Its reward curve consiste
 
 ![Evaluation Results](results/plots/Evaluation_Results.png)
 
-To address DQN’s weaknesses, we integrated **Monte Carlo Tree Search (MCTS)** as a planning module on top of the learned DQN policy. The hybrid **DQN+MCTS** agent achieved significantly better performance:
+The plot above shows the **cumulative rewards across 50 evaluation games** for both the standalone **DQN agent** and the hybrid **DQN+MCTS agent**.
+
+
+* The **DQN curve** stays consistently below zero, reflecting its difficulty in achieving reliable success during evaluation. Despite having improved during training, the agent frequently stalls or terminates by reaching the 75-step cap, leading to a negative overall score.
+* By contrast, the **DQN+MCTS curve** trends upward and stabilizes above zero. This demonstrates the effect of planning: the agent is able to explore ahead, avoid dead ends, and achieve better long-term outcomes even in challenging scenarios.
+
 
 **Evaluation Statistics (50 games):**
 
-* Average Reward: **0.050** (positive, in contrast to DQN’s negative score)
-* Average Inference Time: **0.0133 seconds**
 
-This demonstrates a clear **trade-off between speed and success**:
+* **DQN:** Average Reward = **-2.062**, Average Inference Time = **0.0002s per step**
+* **DQN+MCTS:** Average Reward = **0.050**, Average Inference Time = **0.0133s per step**
 
-* **DQN Strategy:** Fast and reactive (0.0002s per step). However, it is prone to failure—76% of its games ended by hitting the maximum step limit (75).
-* **DQN+MCTS Strategy:** Slower due to planning (0.0133s per step), but more robust. The agent explores ahead, often finding viable paths to the goal. 90% of its games reached the 75-step cap, reflecting its willingness to extend episodes in search of solutions.
 
-In summary:
+The comparison highlights a clear **trade-off between speed and robustness**:
 
-* **DQN** learns faster but fails more often during evaluation.
-* **DQN+MCTS** sacrifices speed for robustness, achieving consistently higher rewards.
+
+* **DQN Strategy** – Fast and reactive, but prone to failure. About 76% of its games end by hitting the maximum step limit.
+* **DQN+MCTS Strategy** – Slower due to the planning overhead, yet more effective. It reaches the 75-step cap in ~90% of games, reflecting persistence in exploring solutions, and ultimately achieves higher rewards.
+
+
+In summary, the line plot and statistics together confirm that **DQN+MCTS outperforms DQN** in terms of reliability and reward, albeit at the cost of slower inference.
 
 ---
 
