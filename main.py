@@ -7,14 +7,15 @@ if __name__ == "__main__":
         "--algo",
         type=str,
         required=True,
-        choices=["qlearning", "dqn"],
+        choices=["qlearning", "dqn", "ppo"],
         help="Algorithm to run"
     )
     args = parser.parse_args()
 
     script_map = {
         "qlearning": "scripts.train_qlearning",
-        "dqn": "scripts.train_dqn"
+        "dqn": "scripts.train_dqn",
+        "ppo": "scripts.train_ppo",
     }
 
     module_name = script_map[args.algo]
