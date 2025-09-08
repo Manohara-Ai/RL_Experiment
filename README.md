@@ -1,8 +1,8 @@
 # RL\_Experiment
 
 A reinforcement learning project exploring different RL algorithms on a custom-built grid-world environment (**BoxEnv**).
-Currently implemented: **Q-Learning** and **DQN**.
-Future extensions include **TreeQN** and **MCTS guided by DQN**.
+
+Currently implemented: **Q-Learning**, **DQN**, and **PPO**. We also extend DQN with **Monte Carlo Tree Search (MCTS)** for planning-enhanced decision making.
 
 ---
 
@@ -10,7 +10,7 @@ Future extensions include **TreeQN** and **MCTS guided by DQN**.
 
 ![Box Environment](box_env/envs/box_env.png)
 
-Train agents to navigate and solve the `BoxEnv` environment using different reinforcement learning techniques.
+The **BoxEnv** environment is a grid-world style task where an agent must navigate through walls and obstacles to reach the goal. The sparse reward structure makes it a challenging environment for standard RL algorithms.
 
 ---
 
@@ -18,38 +18,14 @@ Train agents to navigate and solve the `BoxEnv` environment using different rein
 
 ```
 .
-├── box_env
-│   ├── envs
-│   │   ├── box_env.py        # Custom environment implementation
-│   │   └── resources/        # Textures (player, goal, walls, obstacles)
-│   └── wrappers/             # Optional wrappers for preprocessing
-│
-├── config
-│   ├── dqn.yaml              # Hyperparameters for DQN
-│   └── qlearning.yaml        # Hyperparameters for Q-Learning
-│
-├── models
-│   ├── dqn.py                # DQN agent implementation
-│   └── qlearning.py          # Q-Learning agent implementation
-│
-├── scripts
-│   ├── train_dqn.py          # Training script for DQN
-│   └── train_qlearning.py    # Training script for Q-Learning
-│
-├── results
-│   ├── checkpoints/          # Saved models and Q-tables
-│   ├── csv/                  # Training logs in CSV format
-│   └── plots/                # Training performance plots
-│
-├── utils
-│   ├── helper.py             # Helper functions
-│   ├── plotting.py           # Plotting utilities
-│   └── save_load.py          # Save/load utilities
-│
-├── main.py                   # CLI entrypoint for experiments
-├── pyproject.toml            # Project metadata
-├── LICENSE
-└── README.md
+├── box_env/              # Custom environment and wrappers
+├── config/               # Algorithm hyperparameter YAML files
+├── models/               # Implementations of Q-Learning, DQN, PPO
+├── scripts/              # Training & evaluation scripts
+├── results/              # Checkpoints, CSV logs, plots
+├── utils/                # Helper functions, plotting, save/load utilities
+├── main.py               # CLI entrypoint for training
+└── pyproject.toml        # Project metadata
 ```
 
 ---
@@ -87,6 +63,12 @@ python3 main.py --algo qlearning
 python3 main.py --algo dqn
 ```
 
+### Run PPO
+
+```bash
+python3 main.py --algo ppo
+```
+
 This will:
 
 * Load hyperparameters from the corresponding YAML config in `config/`
@@ -98,34 +80,62 @@ This will:
 
 ## Results
 
-Training outputs are automatically saved in the `results/` directory:
+All training logs and evaluation metrics are saved under `results/`. Here we present the key findings from our experiments.
 
-* **Plots** → `results/plots/`
-* **Logs (CSV)** → `results/csv/`
-* **Checkpoints** → `results/checkpoints/`
+### **Q-Learning**
 
----
+![Q-Learning Plot](results/plots/Q_Learning.png)
 
-### Q-Learning Performance
+The **Q-Learning agent** shows limited learning capability. Its average reward fluctuates around a negative value throughout training and fails to converge toward a consistent optimal policy. This stagnation is expected given the large state space of `BoxEnv`—tabular Q-learning cannot effectively explore or generalize in this environment. The agent frequently gets stuck in loops, colliding with walls or obstacles, which results in persistently negative rewards.
 
-The Q-Learning agent's performance appears to be stagnant. The average reward fluctuates around a negative value and does not show a clear upward trend. This suggests that the agent is struggling to find a consistent optimal policy. This behavior is expected for tabular Q-learning in an environment with a large state space, as it may not be able to explore all possible states effectively. The agent seems to get stuck in local optima, receiving a consistent negative reward, likely from bumping into walls or obstacles without reaching the goal.
+### **DQN**
 
-[![Q-Learning Plot](results/plots/Q_Learning.png)](results/plots/Q_Learning.png)
+![DQN Plot](results/plots/DQN.png)
 
----
+The **DQN agent** demonstrates clearer learning progress. Starting from negative rewards, its performance steadily improves as training progresses. By leveraging a deep neural network with experience replay, DQN successfully generalizes across unseen states and avoids the pitfalls of tabular Q-learning. The reward curve becomes smoother and trends upward, though evaluation results reveal that it still struggles to consistently solve the environment.
 
-### DQN Performance
+**Evaluation Statistics (50 games):**
 
-In contrast, the DQN agent demonstrates significant learning progress. The average reward steadily increases over the 2000 episodes, starting from a negative value and climbing to a positive one. This indicates that the deep neural network is successfully generalizing from the agent's experiences to learn a better policy. The smoother curve and consistent upward trend show that DQN is more effective at handling the complexity of the BoxEnv and navigating to the goal, unlike the tabular Q-Learning approach. The final positive reward shows that the agent has learned a policy to solve the environment.
+* Average Reward: **-2.062**
+* Average Inference Time: **0.0002 seconds**
 
-[![DQN Plot](results/plots/DQN.png)](results/plots/DQN.png)
+The negative evaluation reward indicates that while DQN improves during training, it is not reliably successful at test time.
+
+### **PPO**
+
+![PPO Plot](results/plots/PPO.png)
+
+The **PPO agent** performs poorly in this environment. Its reward curve consistently decreases, reflecting the difficulty of sparse reward tasks for on-policy algorithms. PPO fails to gather enough positive experiences to update its policy effectively. Unlike DQN, PPO cannot rely on off-policy replay, which further limits its ability to bootstrap from rare successful trajectories.
+
+### **DQN + MCTS**
+
+![Evaluation Results](results/plots/Evaluation_Results.png)
+
+To address DQN’s weaknesses, we integrated **Monte Carlo Tree Search (MCTS)** as a planning module on top of the learned DQN policy. The hybrid **DQN+MCTS** agent achieved significantly better performance:
+
+**Evaluation Statistics (50 games):**
+
+* Average Reward: **0.050** (positive, in contrast to DQN’s negative score)
+* Average Inference Time: **0.0133 seconds**
+
+This demonstrates a clear **trade-off between speed and success**:
+
+* **DQN Strategy:** Fast and reactive (0.0002s per step). However, it is prone to failure—76% of its games ended by hitting the maximum step limit (75).
+* **DQN+MCTS Strategy:** Slower due to planning (0.0133s per step), but more robust. The agent explores ahead, often finding viable paths to the goal. 90% of its games reached the 75-step cap, reflecting its willingness to extend episodes in search of solutions.
+
+In summary:
+
+* **DQN** learns faster but fails more often during evaluation.
+* **DQN+MCTS** sacrifices speed for robustness, achieving consistently higher rewards.
 
 ---
 
 ## Future Work
 
-* Add **TreeQN** for temporal reasoning
-* Add **MCTS-guided DQN** for planning-enhanced training
+* Improve reward shaping to mitigate the sparse reward problem.
+* Extend planning-enhanced methods (TreeQN, MCTS-guided PPO).
+* Experiment with curriculum learning to help PPO adapt.
+* Benchmark against additional algorithms (A3C, SAC).
 
 ---
 
