@@ -1,3 +1,4 @@
+import os
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
@@ -21,7 +22,6 @@ def run_env(env, params):
     all_states, all_actions = [], []
 
     best_avg_reward = -float('inf')
-    best_qtable = None
 
     for run in range(params['n_runs']):
         learner = Qlearning(
@@ -61,15 +61,15 @@ def run_env(env, params):
             rewards[episode, run] = total_rewards
             steps[episode, run] = step
 
+            # --- save best model like PPO/DQN ---
             avg_reward_run = rewards[max(0, episode-100):episode+1, run].mean()
-            
             if avg_reward_run > best_avg_reward:
                 best_avg_reward = avg_reward_run
-                best_qtable = learner.qtable.copy()
+                save_qtable(learner.qtable, "Q_Table.npy")
 
         qtables[run, :, :] = learner.qtable
 
-    return rewards, steps, episodes, qtables, all_states, all_actions, best_qtable
+    return rewards, steps, episodes, qtables, all_states, all_actions
 
 if __name__ == '__main__':
     res_all = pd.DataFrame()
@@ -99,10 +99,7 @@ if __name__ == '__main__':
     res, st = postprocess(episodes, params, rewards, steps)
     res_all = pd.concat([res_all, res])
     st_all = pd.concat([st_all, st])
-    qtable = qtables.mean(axis=0)
-    save_qtable(qtable, 'Q_Table.npy')
+    print("Q Table saved at:", os.path.abspath("results/checkpoints/Q_Table.npy"))
     save_csv(res_all, "Q_Learning.csv")
-
     plot_rewards_per_episode(res_all, "Q_Learning")
-
     env.close()

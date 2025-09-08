@@ -1,3 +1,4 @@
+import os
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
@@ -56,7 +57,7 @@ def run_env(env, params):
             
             if total_rewards > best_reward:
                 best_reward = total_rewards
-                save_checkpoint(agent.policy_net, agent.optimizer, "DQN_best.pth")
+                save_checkpoint(agent.policy_net, agent.optimizer, "DQN.pth")
     
     return rewards, steps, episodes
 
@@ -94,7 +95,6 @@ if __name__ == '__main__':
     res_all = pd.concat([res_all, res])
     st_all = pd.concat([st_all, st])
     save_csv(res_all, "DQN.csv")
-
+    print("Checkpoint saved at:", os.path.abspath("results/checkpoints/DQN.pth"))
     plot_rewards_per_episode(res_all, 'DQN')
-
     env.close()

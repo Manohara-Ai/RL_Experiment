@@ -43,7 +43,6 @@ def save_qtable(qtable, filename):
     os.makedirs(CHECKPOINT_DIR, exist_ok=True)
     path = os.path.join(CHECKPOINT_DIR, filename)
     np.save(path, qtable)
-    print("Q-table saved at:", os.path.abspath(path))
 
 def load_qtable(filename):
     path = os.path.join(CHECKPOINT_DIR, filename)
