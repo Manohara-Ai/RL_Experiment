@@ -214,6 +214,28 @@ class BoxEnv(gym.Env):
 
         return observation, reward, terminated, False, info
 
+    def clone_state(self):
+        return {
+            "agent": np.copy(self._agent_location),
+            "targets": [np.copy(t) for t in self._target_location],
+            "boxes": [np.copy(b) for b in self._boxes],
+            "obstacles": [np.copy(o) for o in self._obstacles],
+            "steps_taken": self.steps_taken,
+            "edge_boxes": self.edge_boxes,
+            "boxes_on_goals_count": self.boxes_on_goals_count,
+            "rng_state": self.np_random.bit_generator.state,
+        }
+
+    def restore_state(self, state):
+        self._agent_location = np.copy(state["agent"])
+        self._target_location = [np.copy(t) for t in state["targets"]]
+        self._boxes = [np.copy(b) for b in state["boxes"]]
+        self._obstacles = [np.copy(o) for o in state["obstacles"]]
+        self.steps_taken = state["steps_taken"]
+        self.edge_boxes = state["edge_boxes"]
+        self.boxes_on_goals_count = state["boxes_on_goals_count"]
+        self.np_random.bit_generator.state = state["rng_state"]
+
     def render(self):
         if self.render_mode == "rgb_array":
             return self._render_frame()
