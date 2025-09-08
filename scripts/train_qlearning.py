@@ -20,6 +20,9 @@ def run_env(env, params):
     qtables = np.zeros((params['n_runs'], params['state_size'], params['action_size']))
     all_states, all_actions = [], []
 
+    best_avg_reward = -float('inf')
+    best_qtable = None
+
     for run in range(params['n_runs']):
         learner = Qlearning(
             learning_rate=params['learning_rate'],
@@ -58,9 +61,15 @@ def run_env(env, params):
             rewards[episode, run] = total_rewards
             steps[episode, run] = step
 
+            avg_reward_run = rewards[max(0, episode-100):episode+1, run].mean()
+            
+            if avg_reward_run > best_avg_reward:
+                best_avg_reward = avg_reward_run
+                best_qtable = learner.qtable.copy()
+
         qtables[run, :, :] = learner.qtable
 
-    return rewards, steps, episodes, qtables, all_states, all_actions
+    return rewards, steps, episodes, qtables, all_states, all_actions, best_qtable
 
 if __name__ == '__main__':
     res_all = pd.DataFrame()

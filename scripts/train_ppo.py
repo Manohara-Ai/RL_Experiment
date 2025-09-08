@@ -1,63 +1,72 @@
+import os
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
 import torch
 
-from utils.save_load import load_config, save_csv, save_checkpoint
+from utils.save_load import load_config, save_csv
 from utils.plotting import plot_rewards_per_episode
 from utils.helper import postprocess
 
-from models.dqn import DQNAgent
-
+from models.ppo import PPOAgent
 from box_env.envs.box_env import BoxEnv
 
-params = load_config('dqn.yaml')
+params = load_config('ppo.yaml')
 rng = np.random.default_rng(params['seed'])
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 def run_env(env, params):
     rewards = np.zeros((params['total_episodes'], params['n_runs']))
     steps = np.zeros((params['total_episodes'], params['n_runs']))
     episodes = np.arange(params['total_episodes'])
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    
-    best_reward = -np.inf
-    
+
+    N = params.get('learn_every', 20)
+    best_score = -float('inf')
+
     for run in range(params['n_runs']):
-        agent = DQNAgent(
-            state_shape=params['state_size'],
-            action_size=params['action_size'],
-            params=params,
-            rng=rng,
-            device=device
+        agent = PPOAgent(
+            n_actions=params['action_size'],
+            input_dims=params['state_size'],
+            gamma=params['gamma'],
+            lr=params['learning_rate'],
+            gae_lambda=params.get('gae_lambda', 0.95),
+            policy_clip=params.get('policy_clip', 0.2),
+            batch_size=params.get('batch_size', 64),
+            n_epochs=params.get('n_epochs', 10)
         )
-        
+
+        n_steps = 0
         for episode in tqdm(range(params['total_episodes']), desc=f"Run {run+1}"):
             state, _ = env.reset(seed=params['seed'] + run)
+            state = np.array(state, dtype=np.float32)
             done = False
             total_rewards = 0
             step = 0
-            exploration_rate = params['epsilon_end'] + (params['epsilon_start'] - params['epsilon_end']) * np.exp(-1. * episode / params['epsilon_decay'])
-            
+
             while not done:
-                action = agent.choose_action(state, exploration_rate)
+                action, prob, val = agent.choose_action(state)
                 next_state, reward, terminated, truncated, _ = env.step(action)
                 done = terminated or truncated
-                agent.memory.push(state, action, reward, next_state, done)
-                state = next_state
                 total_rewards += reward
+
+                agent.remember(state, action, prob, val, reward, done)
+                state = np.array(next_state, dtype=np.float32)
+
+                if n_steps % N == 0:
+                    agent.learn()
+
+                n_steps += 1
                 step += 1
-                agent.train_step(params['batch_size'])
-            
+
             rewards[episode, run] = total_rewards
             steps[episode, run] = step
+
+            avg_score_run = rewards[max(0, episode-100):episode+1, run].mean()
             
-            if episode % params['target_update_freq'] == 0:
-                agent.update_target_network()
-            
-            if total_rewards > best_reward:
-                best_reward = total_rewards
-                save_checkpoint(agent.policy_net, agent.optimizer, "DQN_best.pth")
-    
+            if avg_score_run > best_score:
+                best_score = avg_score_run
+                agent.save_models()
+
     return rewards, steps, episodes
 
 if __name__ == '__main__':
@@ -74,16 +83,15 @@ if __name__ == '__main__':
     print(f"Environment size       : {params['map_size']}x{params['map_size']}")
     print(f"Total episodes         : {params['total_episodes']}")
     print(f"Number of runs         : {params['n_runs']}")
-    print(f"Action space size      : {params['action_size']}")
-    print(f"State space shape      : {params['state_size']}")
+    print(f"Batch size             : {params['batch_size']}")
+    print(f"Number of epochs       : {params['n_epochs']}")
+    print(f"Learning frequency N   : {params['N']}")
     print(f"Learning rate          : {params['learning_rate']}")
     print(f"Discount factor (gamma): {params['gamma']}")
-    print(f"Epsilon start          : {params['epsilon_start']}")
-    print(f"Epsilon end            : {params['epsilon_end']}")
-    print(f"Epsilon decay          : {params['epsilon_decay']}")
-    print(f"Batch size             : {params['batch_size']}")
-    print(f"Max memory             : {params['max_memory']}")
-    print(f"Target update freq     : {params['target_update_freq']}")
+    print(f"GAE lambda             : {params['gae_lambda']}")
+    print(f"Policy clip            : {params['policy_clip']}")
+    print(f"Input dimensions       : {params['input_dims']}")
+    print(f"Number of actions      : {params['n_actions']}")
     print(f"Seed                   : {params['seed']}")
     print("="*50 + "\n")
     print(f"Training on BoxEnv of size: {params['map_size']}x{params['map_size']} started!\n")
@@ -93,8 +101,9 @@ if __name__ == '__main__':
     res, st = postprocess(episodes, params, rewards, steps)
     res_all = pd.concat([res_all, res])
     st_all = pd.concat([st_all, st])
-    save_csv(res_all, "DQN.csv")
-
-    plot_rewards_per_episode(res_all, 'DQN')
-
+    save_csv(res_all, "PPO.csv")
+    print("Checkpoint saved at:", os.path.abspath("results/checkpoints/PPO/"))
+    
+    plot_rewards_per_episode(res_all, 'PPO')
+    
     env.close()

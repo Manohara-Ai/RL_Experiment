@@ -30,8 +30,6 @@ def save_checkpoint(model, optimizer, filename):
         "optimizer_state_dict": optimizer.state_dict(),
     }, path)
 
-    print("Checkpoint saved at:", os.path.abspath(path))
-
 def load_checkpoint(model, optimizer, filename, device="cpu"):
     path = os.path.join(CHECKPOINT_DIR, filename)
     checkpoint = torch.load(path, map_location=device)
