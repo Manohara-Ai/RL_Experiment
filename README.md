@@ -54,19 +54,19 @@ Use the `main.py` entrypoint to run training with the algorithm of your choice:
 ### Run Q-Learning
 
 ```bash
-python3 main.py --algo qlearning
+python3 main.py --train qlearning
 ```
 
 ### Run DQN
 
 ```bash
-python3 main.py --algo dqn
+python3 main.py --train dqn
 ```
 
 ### Run PPO
 
 ```bash
-python3 main.py --algo ppo
+python3 main.py --train ppo
 ```
 
 This will:
