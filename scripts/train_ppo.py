@@ -20,7 +20,7 @@ def run_env(env, params):
     steps = np.zeros((params['total_episodes'], params['n_runs']))
     episodes = np.arange(params['total_episodes'])
 
-    N = params.get('learn_every', 20)
+    N = params.get('N')
     best_score = -float('inf')
 
     for run in range(params['n_runs']):
@@ -29,10 +29,10 @@ def run_env(env, params):
             input_dims=params['state_size'],
             gamma=params['gamma'],
             lr=params['learning_rate'],
-            gae_lambda=params.get('gae_lambda', 0.95),
-            policy_clip=params.get('policy_clip', 0.2),
-            batch_size=params.get('batch_size', 64),
-            n_epochs=params.get('n_epochs', 10)
+            gae_lambda=params.get('gae_lambda'),
+            policy_clip=params.get('policy_clip'),
+            batch_size=params.get('batch_size'),
+            n_epochs=params.get('n_epochs')
         )
 
         n_steps = 0
@@ -90,7 +90,7 @@ if __name__ == '__main__':
     print(f"Discount factor (gamma): {params['gamma']}")
     print(f"GAE lambda             : {params['gae_lambda']}")
     print(f"Policy clip            : {params['policy_clip']}")
-    print(f"Input dimensions       : {params['input_dims']}")
+    print(f"Input dimensions       : {params['state_size']}")
     print(f"Number of actions      : {params['n_actions']}")
     print(f"Seed                   : {params['seed']}")
     print("="*50 + "\n")

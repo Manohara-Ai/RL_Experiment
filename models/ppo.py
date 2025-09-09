@@ -1,6 +1,7 @@
 import numpy as np
 import torch as T
 import torch.nn as nn
+import torch.nn.functional as F
 import torch.optim as optim
 from torch.distributions import Categorical
 from utils.save_load import save_checkpoint, load_checkpoint
@@ -20,44 +21,68 @@ class PPOMemory:
 
     def generate_batches(self):
         n_states = len(self.states)
-        indices = np.arange(n_states)
+        if n_states == 0:
+            return np.array([]), np.array([]), np.array([]), np.array([]), np.array([]), np.array([]), []
+
+        indices = np.arange(n_states, dtype=np.int64)
         np.random.shuffle(indices)
         batches = [indices[i:i+self.batch_size] for i in range(0, n_states, self.batch_size)]
 
-        return (np.array(self.states), np.array(self.actions), np.array(self.probs),
-                np.array(self.vals), np.array(self.rewards), np.array(self.dones), batches)
+        states = np.stack(self.states)
+        actions = np.array(self.actions)
+        probs = np.array(self.probs)
+        vals = np.array(self.vals)
+        rewards = np.array(self.rewards)
+        dones = np.array(self.dones)
+
+        return states, actions, probs, vals, rewards, dones, batches
 
     def clear_memory(self):
-        self.states, self.actions, self.probs, self.vals, self.rewards, self.dones = [], [], [], [], [], []
+        self.states = []
+        self.actions = []
+        self.probs = []
+        self.vals = []
+        self.rewards = []
+        self.dones = []
+
+class ConvBackbone(nn.Module):
+    def __init__(self, row_count, column_count, input_channels):
+        super().__init__()
+        self.conv1 = nn.Conv2d(input_channels, 16, kernel_size=3, padding=1)
+        self.conv2 = nn.Conv2d(16, 32, kernel_size=3, padding=1)
+        
+        with T.no_grad():
+            x = T.zeros(1, input_channels, row_count, column_count)
+            x = self.conv1(x)
+            x = self.conv2(x)
+            flatten_size = x.view(1, -1).size(1)
+        
+        self.flatten_size = flatten_size
+
+    def forward(self, x):
+        x = F.relu(self.conv1(x))
+        x = F.relu(self.conv2(x))
+        x = x.reshape(x.size(0), -1)
+        return x
 
 class Actor(nn.Module):
-    def __init__(self, n_actions, input_shape, lr):
+    def __init__(self, n_actions, input_dims, lr, hidden_dim=128):
         super().__init__()
-        h, w, c = input_shape  # Height, Width, Channels
+        row_count, col_count, input_channels = input_dims
+        self.backbone = ConvBackbone(row_count, col_count, input_channels)
+        self.fc1 = nn.Linear(self.backbone.flatten_size, hidden_dim)
+        self.fc_pi = nn.Linear(hidden_dim, n_actions)
 
-        self.conv = nn.Sequential(
-            nn.Conv2d(c, 32, kernel_size=3, stride=1, padding=1),
-            nn.ReLU(),
-            nn.Conv2d(32, 64, kernel_size=3, stride=1, padding=1),
-            nn.ReLU(),
-            nn.Flatten()
-        )
-
-        conv_out_size = 64 * h * w
-        self.fc = nn.Sequential(
-            nn.Linear(conv_out_size, 256),
-            nn.ReLU(),
-            nn.Linear(256, n_actions),
-            nn.Softmax(dim=-1)
-        )
-
-        self.device = T.device('cuda' if T.cuda.is_available() else 'cpu')
-        self.to(self.device)
         self.optimizer = optim.Adam(self.parameters(), lr=lr)
+        self.device = T.device("cuda" if T.cuda.is_available() else "cpu")
+        self.to(self.device)
 
     def forward(self, state):
-        x = state.permute(0, 3, 1, 2).float()  # [B,H,W,C] -> [B,C,H,W]
-        return Categorical(self.fc(self.conv(x)))
+        x = self.backbone(state)
+        x = F.relu(self.fc1(x))
+        logits = self.fc_pi(x)
+        dist = Categorical(logits=logits)
+        return dist
 
     def save_model(self):
         save_checkpoint(self, self.optimizer, 'PPO/Actor.pth')
@@ -66,32 +91,22 @@ class Actor(nn.Module):
         load_checkpoint(self, self.optimizer, 'PPO/Actor.pth', device=self.device)
 
 class Critic(nn.Module):
-    def __init__(self, input_shape, lr):
+    def __init__(self, input_dims, lr, hidden_dim=128):
         super().__init__()
-        h, w, c = input_shape
+        row_count, col_count, input_channels = input_dims
+        self.backbone = ConvBackbone(row_count, col_count, input_channels)
+        self.fc1 = nn.Linear(self.backbone.flatten_size, hidden_dim)
+        self.fc_v = nn.Linear(hidden_dim, 1)
 
-        self.conv = nn.Sequential(
-            nn.Conv2d(c, 32, 3, stride=1, padding=1),
-            nn.ReLU(),
-            nn.Conv2d(32, 64, 3, stride=1, padding=1),
-            nn.ReLU(),
-            nn.Flatten()
-        )
-
-        conv_out_size = 64 * h * w
-        self.fc = nn.Sequential(
-            nn.Linear(conv_out_size, 256),
-            nn.ReLU(),
-            nn.Linear(256, 1)
-        )
-
-        self.device = T.device('cuda' if T.cuda.is_available() else 'cpu')
-        self.to(self.device)
         self.optimizer = optim.Adam(self.parameters(), lr=lr)
+        self.device = T.device("cuda" if T.cuda.is_available() else "cpu")
+        self.to(self.device)
 
     def forward(self, state):
-        x = state.permute(0, 3, 1, 2).float()
-        return self.fc(self.conv(x)).squeeze(-1)
+        x = self.backbone(state)
+        x = F.relu(self.fc1(x))
+        value = self.fc_v(x)
+        return value
 
     def save_model(self):
         save_checkpoint(self, self.optimizer, 'PPO/Critic.pth')
@@ -115,52 +130,111 @@ class PPOAgent:
         self.memory.store_memory(state, action, probs, vals, reward, done)
 
     def choose_action(self, observation):
-        state = T.tensor(np.array(observation, dtype=np.float32)).unsqueeze(0).to(self.actor.device)
+        state = T.tensor(np.array(observation, dtype=np.float32), device=self.actor.device)
+        state = state.permute(2, 0, 1).unsqueeze(0)
+
         dist = self.actor(state)
         value = self.critic(state)
         action = dist.sample()
-        return T.squeeze(action).item(), T.squeeze(dist.log_prob(action)).item(), T.squeeze(value).item()
+
+        return (T.squeeze(action).item(),
+                T.squeeze(dist.log_prob(action)).item(),
+                T.squeeze(value).item())
 
     def learn(self):
-        states, actions, old_probs, vals, rewards, dones, batches = self.memory.generate_batches()
-        values = T.tensor(vals, dtype=T.float, device=self.actor.device)
-        rewards = T.tensor(rewards, dtype=T.float, device=self.actor.device)
-        dones = T.tensor(dones, dtype=T.float, device=self.actor.device)
+        if len(self.memory.states) < self.memory.batch_size:
+            return
 
-        # Compute advantages using GAE
-        advantage = np.zeros(len(rewards), dtype=np.float32)
-        for t in range(len(rewards)-1):
-            discount = 1
-            a_t = 0
-            for k in range(t, len(rewards)-1):
-                a_t += discount * (rewards[k] + self.gamma * values[k+1] * (1 - dones[k]) - values[k])
-                discount *= self.gamma * self.gae_lambda
-            advantage[t] = a_t
-        advantage = T.tensor(advantage, dtype=T.float, device=self.actor.device)
+        states, actions, old_probs, vals, rewards, dones, batches = self.memory.generate_batches()
+        if len(batches) == 0:
+            return
+
+        with T.no_grad():
+            all_states = T.tensor(states, dtype=T.float, device=self.actor.device)
+            if all_states.ndim == 4 and all_states.shape[-1] == self.actor.backbone.conv1.in_channels:
+                all_states = all_states.permute(0, 3, 1, 2)
+            values_tensor = self.critic(all_states).squeeze(-1)
+
+        T_rewards = T.tensor(rewards, dtype=T.float, device=self.actor.device)
+        T_dones = T.tensor(dones, dtype=T.float, device=self.actor.device)
+        values = values_tensor.cpu().numpy()
+
+        advantages = np.zeros(len(rewards), dtype=np.float32)
+        gae = 0.0
+        for t in reversed(range(len(rewards))):
+            next_value = values[t+1] if t < len(rewards)-1 else 0.0
+            delta = rewards[t] + self.gamma * next_value * (1 - int(dones[t])) - values[t]
+            gae = delta + self.gamma * self.gae_lambda * (1 - int(dones[t])) * gae
+            advantages[t] = gae
+
+        advantages = T.tensor(advantages, dtype=T.float, device=self.actor.device)
+
+        if advantages.numel() > 1:
+            adv_mean = advantages.mean()
+            adv_std = advantages.std(unbiased=False)
+            if not T.isfinite(adv_std) or adv_std.item() < 1e-8:
+                adv_std = T.tensor(1.0, device=self.actor.device)
+            advantages = (advantages - adv_mean) / (adv_std + 1e-8)
+        else:
+            advantages = T.zeros_like(advantages)
+
+        advantages = T.clamp(advantages, -10.0, 10.0)
+
+        old_probs_tensor = T.tensor(old_probs, dtype=T.float, device=self.actor.device)
+        actions_arr = T.tensor(actions, dtype=T.long, device=self.actor.device)
 
         for _ in range(self.n_epochs):
-            for batch in batches:
-                batch_states = T.tensor(states[batch], dtype=T.float, device=self.actor.device)
-                batch_actions = T.tensor(actions[batch], device=self.actor.device)
-                batch_old_probs = T.tensor(old_probs[batch], dtype=T.float, device=self.actor.device)
+            for batch_idx in batches:
+                batch_states = T.tensor(states[batch_idx], dtype=T.float, device=self.actor.device)
+                if batch_states.ndim == 4 and batch_states.shape[-1] == self.actor.backbone.conv1.in_channels:
+                    batch_states = batch_states.permute(0, 3, 1, 2)
+
+                batch_actions = actions_arr[batch_idx]
+                batch_old_probs = old_probs_tensor[batch_idx]
+                batch_advantages = advantages[batch_idx]
+                batch_values = values_tensor[batch_idx].detach()
 
                 dist = self.actor(batch_states)
-                critic_val = self.critic(batch_states)
-                critic_val = T.squeeze(critic_val)
+                critic_val = self.critic(batch_states).squeeze(-1)
 
-                new_probs = dist.log_prob(batch_actions)
-                prob_ratio = (new_probs - batch_old_probs).exp()
-                weighted_probs = advantage[batch] * prob_ratio
-                weighted_clipped_probs = T.clamp(prob_ratio, 1 - self.policy_clip, 1 + self.policy_clip) * advantage[batch]
-                actor_loss = -T.min(weighted_probs, weighted_clipped_probs).mean()
+                if not T.isfinite(batch_advantages).all():
+                    continue
 
-                returns = advantage[batch] + values[batch]
+                logits = None
+                try:
+                    new_log_probs = dist.log_prob(batch_actions)
+                    entropy = dist.entropy().mean()
+                except Exception as e:
+                    continue
+
+                prob_ratio = (new_log_probs - batch_old_probs).exp()
+
+                weighted_probs = batch_advantages * prob_ratio
+                weighted_clipped = T.clamp(prob_ratio, 1 - self.policy_clip, 1 + self.policy_clip) * batch_advantages
+                actor_loss = -T.min(weighted_probs, weighted_clipped).mean() - 0.01 * entropy
+
+                returns = batch_advantages + batch_values
                 critic_loss = ((returns - critic_val) ** 2).mean()
 
                 total_loss = actor_loss + 0.5 * critic_loss
+
                 self.actor.optimizer.zero_grad()
                 self.critic.optimizer.zero_grad()
                 total_loss.backward()
+
+                nn.utils.clip_grad_norm_(self.actor.parameters(), max_norm=0.5)
+                nn.utils.clip_grad_norm_(self.critic.parameters(), max_norm=0.5)
+
+                has_nan = False
+                for p in list(self.actor.parameters()) + list(self.critic.parameters()):
+                    if p.grad is not None and not T.isfinite(p.grad).all():
+                        has_nan = True
+                        break
+                if has_nan:
+                    self.actor.optimizer.zero_grad()
+                    self.critic.optimizer.zero_grad()
+                    continue
+
                 self.actor.optimizer.step()
                 self.critic.optimizer.step()
 
